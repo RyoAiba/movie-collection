@@ -1,0 +1,81 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreMovieRequest;
+use App\Http\Requests\UpdateMovieRequest;
+use App\Models\Movie;
+use App\Services\TmdbService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\View\View;
+
+class MovieController extends Controller
+{
+    public function __construct(private readonly TmdbService $tmdb)
+    {
+    }
+
+    public function home(): View
+    {
+        $movies = [];
+        $apiError = null;
+
+        try {
+            $movies = $this->tmdb->nowPlaying();
+        } catch (ConnectionException|RequestException) {
+            $apiError = '上映中の映画を取得できませんでした。時間をおいて再度お試しください。';
+        }
+
+        $collectedTmdbIds = Movie::query()->pluck('tmdb_id')->all();
+
+        return view('movies.home', compact('movies', 'collectedTmdbIds', 'apiError'));
+    }
+
+    public function index(): View
+    {
+        $movies = Movie::query()->latest()->get();
+
+        return view('movies.index', compact('movies'));
+    }
+
+    public function store(StoreMovieRequest $request): RedirectResponse
+    {
+        try {
+            $tmdbMovie = $this->tmdb->movie($request->integer('tmdb_id'));
+        } catch (ConnectionException|RequestException) {
+            return back()->with('error', '映画情報を取得できなかったため、追加できませんでした。');
+        }
+
+        Movie::query()->create([
+            'tmdb_id' => $tmdbMovie['id'],
+            'title' => $tmdbMovie['title'],
+            'overview' => $tmdbMovie['overview'] ?: null,
+            'poster_path' => $tmdbMovie['poster_path'] ?? null,
+            'release_date' => $tmdbMovie['release_date'] ?: null,
+        ]);
+
+        return back()->with('success', '「'.$tmdbMovie['title'].'」をコレクションに追加しました。');
+    }
+
+    public function edit(Movie $movie): View
+    {
+        return view('movies.edit', compact('movie'));
+    }
+
+    public function update(UpdateMovieRequest $request, Movie $movie): RedirectResponse
+    {
+        $movie->update($request->validated());
+
+        return redirect()->route('movies.index')->with('success', '評価とレビューを更新しました。');
+    }
+
+    public function destroy(Movie $movie): RedirectResponse
+    {
+        $title = $movie->title;
+        $movie->delete();
+
+        return redirect()->route('movies.index')->with('success', '「'.$title.'」をコレクションから削除しました。');
+    }
+}
