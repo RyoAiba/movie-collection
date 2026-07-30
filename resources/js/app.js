@@ -1,14 +1,14 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 
 const icons = {
-    add: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>',
-    collected: '<svg class="size-5 group-hover:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4L19 6"/></svg><svg class="hidden size-5 group-hover:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/></svg>',
+    add: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',
+    collected: '<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',
     loading: '<svg class="size-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
 };
 
 const buttonClasses = {
-    add: ['border-white/30', 'bg-slate-950/80', 'text-white', 'hover:border-amber-300', 'hover:bg-amber-400', 'hover:text-slate-950'],
-    collected: ['border-emerald-300/70', 'bg-emerald-400', 'text-slate-950', 'hover:border-red-300/80', 'hover:bg-red-400'],
+    add: ['border-white/80', 'bg-white/85', 'text-rose-600', 'shadow-black/40', 'hover:bg-white'],
+    collected: ['border-rose-300/80', 'bg-rose-500', 'text-white', 'shadow-rose-950/40', 'hover:bg-rose-400'],
 };
 
 function showNotice(message, isError = false) {
@@ -34,11 +34,38 @@ function renderButton(form, collected) {
 
     button.classList.remove(...removeClasses);
     button.classList.add(...addClasses);
+    button.setAttribute('aria-pressed', collected ? 'true' : 'false');
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     icon.innerHTML = collected ? icons.collected : icons.add;
     form.dataset.collected = collected ? 'true' : 'false';
 }
+
+function updateCastFades(scroller) {
+    const container = scroller.parentElement;
+    const leftFade = container.querySelector('.cast-fade-left');
+    const rightFade = container.querySelector('.cast-fade-right');
+    const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+    const canScroll = maxScrollLeft > 1;
+    const isAtLeft = scroller.scrollLeft <= 1;
+    const isAtRight = scroller.scrollLeft >= maxScrollLeft - 1;
+
+    leftFade.classList.toggle('opacity-0', !canScroll || isAtLeft);
+    leftFade.classList.toggle('opacity-100', canScroll && !isAtLeft);
+    rightFade.classList.toggle('opacity-0', !canScroll || isAtRight);
+    rightFade.classList.toggle('opacity-100', canScroll && !isAtRight);
+}
+
+const castScrollers = document.querySelectorAll('.cast-scroller');
+
+castScrollers.forEach((scroller) => {
+    updateCastFades(scroller);
+    scroller.addEventListener('scroll', () => updateCastFades(scroller), { passive: true });
+});
+
+window.addEventListener('resize', () => {
+    castScrollers.forEach(updateCastFades);
+});
 
 document.addEventListener('submit', async (event) => {
     const form = event.target.closest('.collection-toggle');

@@ -7,3 +7,31 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+.cast-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 45%) transparent;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.cast-scroller:hover {
+    scrollbar-color: rgb(203 213 225 / 65%) transparent;
+}
+
+.cast-scroller::-webkit-scrollbar {
+    height: 6px;
+}
+
+.cast-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cast-scroller::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: rgb(148 163 184 / 45%);
+}
+
+.cast-scroller:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225 / 65%);
+}

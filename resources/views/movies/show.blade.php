@@ -3,10 +3,6 @@
 @section('title', $movie['title'].' | Movie Shelf')
 
 @section('content')
-    <a href="{{ route('home') }}" class="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white">
-        <span aria-hidden="true">←</span> 上映中の映画へ戻る
-    </a>
-
     <section class="relative isolate overflow-hidden rounded-3xl border border-white/10 bg-slate-900">
         @if (!empty($movie['backdrop_path']))
             <img
@@ -74,25 +70,29 @@
     @if ($cast->isNotEmpty())
         <section class="mt-12">
             <h2 class="text-2xl font-bold">主な出演者</h2>
-            <div class="mt-6 flex snap-x gap-4 overflow-x-auto pb-4">
-                @foreach ($cast as $person)
-                    <article class="w-36 shrink-0 snap-start overflow-hidden rounded-xl border border-white/10 bg-slate-900">
-                        <div class="aspect-[2/3] bg-slate-800">
-                            @if (!empty($person['profile_path']))
-                                <img src="https://image.tmdb.org/t/p/w342{{ $person['profile_path'] }}" alt="{{ $person['name'] }}" class="h-full w-full object-cover" loading="lazy">
-                            @else
-                                <div class="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
-                                    <svg class="size-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg>
-                                    <span class="text-xs">No Photo</span>
-                                </div>
-                            @endif
-                        </div>
-                        <div class="p-3">
-                            <h3 class="line-clamp-2 text-sm font-semibold">{{ $person['name'] }}</h3>
-                            <p class="mt-1 line-clamp-2 text-xs text-slate-500">{{ $person['character'] ?: '役名不明' }}</p>
-                        </div>
-                    </article>
-                @endforeach
+            <div class="relative mt-6">
+                <div class="cast-scroller flex snap-x snap-proximity gap-4 overflow-x-auto overscroll-x-contain pb-4">
+                    @foreach ($cast as $person)
+                        <article class="w-36 shrink-0 snap-start overflow-hidden rounded-xl border border-white/10 bg-slate-900">
+                            <div class="aspect-[2/3] bg-slate-800">
+                                @if (!empty($person['profile_path']))
+                                    <img src="https://image.tmdb.org/t/p/w342{{ $person['profile_path'] }}" alt="{{ $person['name'] }}" class="h-full w-full object-cover" loading="lazy">
+                                @else
+                                    <div class="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
+                                        <svg class="size-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg>
+                                        <span class="text-xs">No Photo</span>
+                                    </div>
+                                @endif
+                            </div>
+                            <div class="p-3">
+                                <h3 class="line-clamp-2 text-sm font-semibold">{{ $person['name'] }}</h3>
+                                <p class="mt-1 line-clamp-2 text-xs text-slate-500">{{ $person['character'] ?: '役名不明' }}</p>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+                <div class="cast-fade-left pointer-events-none absolute bottom-4 left-0 top-0 w-8 bg-gradient-to-r from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
+                <div class="cast-fade-right pointer-events-none absolute bottom-4 right-0 top-0 w-8 bg-gradient-to-l from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
             </div>
         </section>
     @endif

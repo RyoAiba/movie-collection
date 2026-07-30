@@ -17,14 +17,14 @@
         <div class="grid items-stretch gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             @foreach ($movies as $movie)
                 @php($collectionId = $collectedMovies->get($movie['id']))
-                <article class="relative h-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:border-white/20">
+                <article class="group/card relative h-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-xl shadow-black/10">
                     <a href="{{ route('movies.show', $movie['id']) }}" class="flex h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 sm:flex-col">
                         <div class="w-32 shrink-0 overflow-hidden bg-slate-800 sm:h-72 sm:w-full">
                             @if (!empty($movie['poster_path']))
                                 <img
                                     src="https://image.tmdb.org/t/p/w500{{ $movie['poster_path'] }}"
                                     alt="{{ $movie['title'] }}のポスター"
-                                    class="h-full w-full object-cover"
+                                    class="h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover/card:scale-[1.04] motion-safe:group-focus-within/card:scale-[1.04]"
                                     loading="lazy"
                                 >
                             @else
