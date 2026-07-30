@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class MovieController extends Controller
@@ -37,6 +38,39 @@ class MovieController extends Controller
         $movies = Movie::query()->latest()->get();
 
         return view('movies.index', compact('movies'));
+    }
+
+    public function show(int $tmdbId): View|Response
+    {
+        try {
+            $movie = $this->tmdb->movieDetails($tmdbId);
+        } catch (RequestException $exception) {
+            if ($exception->response->status() === 404) {
+                abort(404);
+            }
+
+            return response()->view('movies.api-error', [
+                'message' => '映画の詳細情報を取得できませんでした。',
+            ], 502);
+        } catch (ConnectionException) {
+            return response()->view('movies.api-error', [
+                'message' => 'TMDBに接続できませんでした。時間をおいて再度お試しください。',
+            ], 502);
+        }
+
+        $collectionId = Movie::query()->where('tmdb_id', $tmdbId)->value('id');
+        $director = collect($movie['credits']['crew'] ?? [])->firstWhere('job', 'Director');
+        $cast = collect($movie['credits']['cast'] ?? [])->take(10);
+        $trailer = collect($movie['videos']['results'] ?? [])
+            ->filter(fn (array $video): bool => ($video['site'] ?? null) === 'YouTube' && ($video['type'] ?? null) === 'Trailer')
+            ->sortBy(fn (array $video): int => match ($video['iso_639_1'] ?? null) {
+                'ja' => 0,
+                'en' => 1,
+                default => 2,
+            })
+            ->first();
+
+        return view('movies.show', compact('movie', 'collectionId', 'director', 'cast', 'trailer'));
     }
 
     public function store(StoreMovieRequest $request): RedirectResponse|JsonResponse
