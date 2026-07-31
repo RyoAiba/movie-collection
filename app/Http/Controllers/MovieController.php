@@ -63,8 +63,9 @@ class MovieController extends Controller
     public function index(): View
     {
         $movies = Movie::query()->latest()->get();
+        $tmdbRatings = $this->tmdb->movieRatings($movies->pluck('tmdb_id')->all());
 
-        return view('movies.index', compact('movies'));
+        return view('movies.index', compact('movies', 'tmdbRatings'));
     }
 
     public function show(int $tmdbId): View|Response

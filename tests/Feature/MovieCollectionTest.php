@@ -236,6 +236,53 @@ test('トップページにマイコレクションを共通カードで表示�
         ->assertSee('aria-pressed="true"', false);
 });
 
+test('コレクションを縦一覧で表示しTMDB平均評価を星の割合で表示する', function () {
+    $movie = Movie::query()->create([
+        'tmdb_id' => 7771,
+        'title' => '評価付きコレクション映画',
+        'poster_path' => '/collection.jpg',
+        'release_date' => '2026-07-31',
+    ]);
+
+    Http::fake([
+        'api.themoviedb.org/3/movie/7771*' => Http::response([
+            'id' => 7771,
+            'vote_average' => 8.2,
+        ]),
+    ]);
+
+    $this->get('/collection')
+        ->assertOk()
+        ->assertSee('評価付きコレクション映画')
+        ->assertSee('82%')
+        ->assertSee('★★★★★')
+        ->assertSee(route('movies.show', $movie->tmdb_id))
+        ->assertSee('aria-pressed="true"', false)
+        ->assertSee('コレクションから外す')
+        ->assertDontSee('映画を探す')
+        ->assertDontSee('>編集<', false)
+        ->assertDontSee('コレクションから削除');
+
+    $this->get('/collection')->assertOk();
+    Http::assertSentCount(1);
+});
+
+test('平均評価の取得失敗時もコレクションを表示できる', function () {
+    Movie::query()->create([
+        'tmdb_id' => 7772,
+        'title' => '評価取得失敗映画',
+    ]);
+
+    Http::fake([
+        'api.themoviedb.org/3/movie/7772*' => Http::failedConnection(),
+    ]);
+
+    $this->get('/collection')
+        ->assertOk()
+        ->assertSee('評価取得失敗映画')
+        ->assertSee('評価情報なし');
+});
+
 test('映画詳細と出演者と日本語予告編を表示できる', function () {
     Http::fake([
         'api.themoviedb.org/3/movie/123*' => Http::response([

@@ -176,6 +176,70 @@ class TmdbService
             ->first();
     }
 
+    /**
+     * @return array<int, float|null>
+     */
+    public function movieRatings(array $movieIds): array
+    {
+        $movieIds = collect($movieIds)
+            ->map(fn ($movieId): int => (int) $movieId)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $language = (string) config('services.tmdb.language');
+        $ratings = [];
+        $missingIds = [];
+
+        foreach ($movieIds as $movieId) {
+            $cacheKey = "tmdb:movie:{$movieId}:rating:{$language}";
+
+            if (Cache::has($cacheKey)) {
+                $ratings[$movieId] = Cache::get($cacheKey)['rating'];
+            } else {
+                $missingIds[] = $movieId;
+            }
+        }
+
+        if ($missingIds === []) {
+            return $ratings;
+        }
+
+        try {
+            $responses = Http::pool(fn (Pool $pool): array => array_map(
+                fn (int $movieId) => $pool
+                    ->as((string) $movieId)
+                    ->withToken((string) config('services.tmdb.token'))
+                    ->acceptJson()
+                    ->timeout(10)
+                    ->get(self::BASE_URL."/movie/{$movieId}", ['language' => $language]),
+                $missingIds,
+            ));
+        } catch (ConnectionException) {
+            return $ratings;
+        }
+
+        foreach ($missingIds as $movieId) {
+            $response = $responses[(string) $movieId] ?? null;
+
+            if (! $response instanceof Response || ! $response->successful()) {
+                continue;
+            }
+
+            $rating = is_numeric($response->json('vote_average'))
+                ? (float) $response->json('vote_average')
+                : null;
+            $ratings[$movieId] = $rating;
+            Cache::put(
+                "tmdb:movie:{$movieId}:rating:{$language}",
+                ['rating' => $rating],
+                self::VIDEO_CACHE_SECONDS,
+            );
+        }
+
+        return $ratings;
+    }
+
     public function posterUrl(?string $path, string $size = 'w500'): ?string
     {
         return $path ? "https://image.tmdb.org/t/p/{$size}{$path}" : null;
