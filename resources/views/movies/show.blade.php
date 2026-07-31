@@ -71,9 +71,9 @@
         <section class="mt-12">
             <h2 class="text-2xl font-bold">主な出演者</h2>
             <div class="relative mt-6">
-                <div class="cast-scroller flex snap-x snap-proximity gap-4 overflow-x-auto overscroll-x-contain pb-4">
+                <div class="scroll-fade-scroller horizontal-scroller flex gap-4 overflow-x-auto overscroll-x-contain pb-4">
                     @foreach ($cast as $person)
-                        <article class="w-36 shrink-0 snap-start overflow-hidden rounded-xl border border-white/10 bg-slate-900">
+                        <article class="w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-900">
                             <div class="aspect-[2/3] bg-slate-800">
                                 @if (!empty($person['profile_path']))
                                     <img src="https://image.tmdb.org/t/p/w342{{ $person['profile_path'] }}" alt="{{ $person['name'] }}" class="h-full w-full object-cover" loading="lazy">
@@ -91,8 +91,8 @@
                         </article>
                     @endforeach
                 </div>
-                <div class="cast-fade-left pointer-events-none absolute bottom-4 left-0 top-0 w-8 bg-gradient-to-r from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
-                <div class="cast-fade-right pointer-events-none absolute bottom-4 right-0 top-0 w-8 bg-gradient-to-l from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
+                <div class="scroll-fade-left pointer-events-none absolute bottom-4 left-0 top-0 w-8 bg-gradient-to-r from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
+                <div class="scroll-fade-right pointer-events-none absolute bottom-4 right-0 top-0 w-8 bg-gradient-to-l from-slate-950 to-transparent opacity-0 transition-opacity duration-200" aria-hidden="true"></div>
             </div>
         </section>
     @endif

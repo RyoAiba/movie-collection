@@ -1,12 +1,15 @@
 <?php
 
 use App\Models\Movie;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
 test('上映中の映画をトップページに表示できる', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-07-30'));
+
     Http::fake([
         'api.themoviedb.org/3/movie/now_playing*' => Http::response([
             'results' => [[
@@ -17,6 +20,14 @@ test('上映中の映画をトップページに表示できる', function () {
                 'release_date' => '2026-07-01',
             ]],
         ]),
+        'api.themoviedb.org/3/discover/movie*' => Http::response([
+            'results' => [[
+                'id' => 456,
+                'title' => '人気のテスト映画',
+                'poster_path' => '/popular.jpg',
+                'release_date' => '2026-07-02',
+            ]],
+        ]),
     ]);
 
     $this->get('/')
@@ -24,7 +35,51 @@ test('上映中の映画をトップページに表示できる', function () {
         ->assertSee('上映中の映画')
         ->assertSee('テスト映画')
         ->assertSee(route('movies.show', 123))
+        ->assertSee('2026年の人気作品')
+        ->assertSee('人気のテスト映画')
+        ->assertSee(route('movies.show', 456))
         ->assertDontSee('映画の概要');
+
+    Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.themoviedb.org/3/discover/movie')
+        && $request['language'] === config('services.tmdb.language')
+        && $request['region'] === config('services.tmdb.region')
+        && $request['primary_release_date.gte'] === '2026-04-01'
+        && $request['primary_release_date.lte'] === '2026-07-30'
+        && $request['sort_by'] === 'popularity.desc');
+});
+
+test('人気映画の取得失敗時も上映中映画を表示できる', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-07-30'));
+
+    Http::fake([
+        'api.themoviedb.org/3/movie/now_playing*' => Http::response([
+            'results' => [[
+                'id' => 123,
+                'title' => '上映中のテスト映画',
+                'poster_path' => null,
+                'release_date' => '2026-07-01',
+            ]],
+        ]),
+        'api.themoviedb.org/3/discover/movie*' => Http::response([], 500),
+    ]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('上映中のテスト映画')
+        ->assertSee('人気作品を取得できませんでした。');
+});
+
+test('人気作品が0件の場合はカテゴリを表示しない', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-07-30'));
+
+    Http::fake([
+        'api.themoviedb.org/3/movie/now_playing*' => Http::response(['results' => []]),
+        'api.themoviedb.org/3/discover/movie*' => Http::response(['results' => []]),
+    ]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertDontSee('2026年の人気作品');
 });
 
 test('映画詳細と出演者と日本語予告編を表示できる', function () {

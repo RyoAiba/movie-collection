@@ -41,10 +41,10 @@ function renderButton(form, collected) {
     form.dataset.collected = collected ? 'true' : 'false';
 }
 
-function updateCastFades(scroller) {
+function updateScrollFades(scroller) {
     const container = scroller.parentElement;
-    const leftFade = container.querySelector('.cast-fade-left');
-    const rightFade = container.querySelector('.cast-fade-right');
+    const leftFade = container.querySelector('.scroll-fade-left');
+    const rightFade = container.querySelector('.scroll-fade-right');
     const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
     const canScroll = maxScrollLeft > 1;
     const isAtLeft = scroller.scrollLeft <= 1;
@@ -56,15 +56,15 @@ function updateCastFades(scroller) {
     rightFade.classList.toggle('opacity-100', canScroll && !isAtRight);
 }
 
-const castScrollers = document.querySelectorAll('.cast-scroller');
+const fadeScrollers = document.querySelectorAll('.scroll-fade-scroller');
 
-castScrollers.forEach((scroller) => {
-    updateCastFades(scroller);
-    scroller.addEventListener('scroll', () => updateCastFades(scroller), { passive: true });
+fadeScrollers.forEach((scroller) => {
+    updateScrollFades(scroller);
+    scroller.addEventListener('scroll', () => updateScrollFades(scroller), { passive: true });
 });
 
 window.addEventListener('resize', () => {
-    castScrollers.forEach(updateCastFades);
+    fadeScrollers.forEach(updateScrollFades);
 });
 
 document.addEventListener('submit', async (event) => {

@@ -21,6 +21,10 @@ class MovieController extends Controller
     {
         $movies = [];
         $apiError = null;
+        $popularMovies = [];
+        $popularError = null;
+        $today = now();
+        $fiscalYear = $this->tmdb->fiscalYearPeriod($today)['year'];
 
         try {
             $movies = $this->tmdb->nowPlaying();
@@ -28,9 +32,15 @@ class MovieController extends Controller
             $apiError = '上映中の映画を取得できませんでした。時間をおいて再度お試しください。';
         }
 
+        try {
+            $popularMovies = $this->tmdb->popularMovies($today);
+        } catch (ConnectionException|RequestException) {
+            $popularError = '人気作品を取得できませんでした。時間をおいて再度お試しください。';
+        }
+
         $collectedMovies = Movie::query()->pluck('id', 'tmdb_id');
 
-        return view('movies.home', compact('movies', 'collectedMovies', 'apiError'));
+        return view('movies.home', compact('movies', 'popularMovies', 'fiscalYear', 'collectedMovies', 'apiError', 'popularError'));
     }
 
     public function index(): View
