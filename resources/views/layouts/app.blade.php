@@ -10,12 +10,12 @@
 <body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
     <header class="border-b border-white/10 bg-slate-950/90">
         <nav class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
-            <a href="{{ route('home') }}" class="text-xl font-semibold tracking-tight">
-                Movie <span class="text-amber-400">Shelf</span>
+            <a href="{{ route('home') }}" class="text-xl font-black uppercase tracking-[-0.04em] text-red-600 transition hover:text-red-500">
+                Movie Shelf
             </a>
             <div class="flex gap-5 text-sm font-medium text-slate-300">
-                <a href="{{ route('home') }}" class="transition hover:text-white {{ request()->routeIs('home') ? 'text-amber-400' : '' }}">上映中</a>
-                <a href="{{ route('movies.index') }}" class="transition hover:text-white {{ request()->routeIs('movies.*') ? 'text-amber-400' : '' }}">コレクション</a>
+                <a href="{{ route('home') }}" class="transition hover:text-white {{ request()->routeIs('home') ? 'text-red-500' : '' }}">上映中</a>
+                <a href="{{ route('movies.index') }}" class="transition hover:text-white {{ request()->routeIs('movies.*') ? 'text-red-500' : '' }}">コレクション</a>
             </div>
         </nav>
     </header>

@@ -1,10 +1,10 @@
 <div class="relative">
-    <div class="scroll-fade-scroller horizontal-scroller flex gap-4 overflow-x-auto overscroll-x-contain pb-4">
+    <div class="scroll-fade-scroller horizontal-scroller flex gap-3 overflow-x-auto overscroll-x-contain pb-4">
         @foreach ($items as $movie)
             @php($collectionId = $collectedMovies->get($movie['id']))
-            <article class="group/movie relative w-40 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-900 sm:w-44">
+            <article class="group/movie relative w-32 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-900">
                 <a href="{{ route('movies.show', $movie['id']) }}" class="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400">
-                    <div class="h-56 overflow-hidden bg-slate-800">
+                    <div class="h-48 overflow-hidden bg-slate-800">
                         @if (!empty($movie['poster_path']))
                             <img
                                 src="https://image.tmdb.org/t/p/w342{{ $movie['poster_path'] }}"
@@ -16,7 +16,7 @@
                             <div class="flex h-full items-center justify-center px-3 text-center text-xs text-slate-500">No Poster</div>
                         @endif
                     </div>
-                    <div class="p-3">
+                    <div class="p-2.5">
                         <h3 class="line-clamp-2 min-h-10 text-sm font-semibold leading-5">{{ $movie['title'] }}</h3>
                         <p class="mt-1 text-xs text-slate-500">{{ $movie['release_date'] ?: '公開日未定' }}</p>
                     </div>
@@ -24,7 +24,8 @@
                 @include('movies.partials.collection-toggle', [
                     'collectionId' => $collectionId,
                     'tmdbId' => $movie['id'],
-                    'class' => 'absolute right-2 top-2 z-10',
+                    'class' => 'absolute right-1.5 top-1.5 z-10',
+                    'compact' => true,
                 ])
             </article>
         @endforeach
