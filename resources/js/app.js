@@ -126,7 +126,6 @@ initializeTrailerCarousel();
 const icons = {
     add: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',
     collected: '<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',
-    loading: '<svg class="size-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
 };
 
 const buttonClasses = {
@@ -134,14 +133,10 @@ const buttonClasses = {
     collected: ['border-rose-300/80', 'bg-rose-500', 'text-white', 'shadow-rose-950/40', 'hover:bg-rose-400'],
 };
 
-function showNotice(message, isError = false) {
+function showCollectionError(message) {
     const notice = document.createElement('div');
-    notice.className = `fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-lg border px-4 py-3 text-sm font-medium shadow-xl transition ${
-        isError
-            ? 'border-red-300/40 bg-red-950 text-red-100'
-            : 'border-emerald-300/40 bg-emerald-950 text-emerald-100'
-    }`;
-    notice.setAttribute('role', isError ? 'alert' : 'status');
+    notice.className = 'fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-red-300/40 bg-red-950 px-4 py-3 text-sm font-medium text-red-100 shadow-xl transition';
+    notice.setAttribute('role', 'alert');
     notice.textContent = message;
     document.body.append(notice);
 
@@ -168,11 +163,104 @@ function collectionFormsFor(tmdbId) {
     return document.querySelectorAll(`.collection-toggle[data-tmdb-id="${tmdbId}"]`);
 }
 
+const collectionStates = new Map();
+
+function collectionStateFor(form) {
+    const tmdbId = Number(form.dataset.tmdbId);
+
+    if (!collectionStates.has(tmdbId)) {
+        const collected = form.dataset.collected === 'true';
+
+        collectionStates.set(tmdbId, {
+            tmdbId,
+            confirmed: collected,
+            desired: collected,
+            destroyUrl: collected ? form.action : null,
+            storeUrl: form.dataset.storeUrl,
+            processing: false,
+            version: 0,
+        });
+    }
+
+    return collectionStates.get(tmdbId);
+}
+
+function renderCollectionVisualState(tmdbId, collected) {
+    collectionFormsFor(tmdbId).forEach((form) => renderButton(form, collected));
+}
+
 function renderCollectionState(tmdbId, collected, destroyUrl = null) {
     collectionFormsFor(tmdbId).forEach((form) => {
         form.action = collected ? destroyUrl : form.dataset.storeUrl;
         renderButton(form, collected);
     });
+
+    const state = collectionStates.get(Number(tmdbId));
+
+    if (state) {
+        state.confirmed = collected;
+        state.desired = collected;
+        state.destroyUrl = collected ? destroyUrl : null;
+    }
+}
+
+function updateCollectionFormActions(state) {
+    collectionFormsFor(state.tmdbId).forEach((form) => {
+        form.action = state.confirmed ? state.destroyUrl : form.dataset.storeUrl;
+    });
+}
+
+async function syncCollectionState(state) {
+    if (state.processing) {
+        return;
+    }
+
+    state.processing = true;
+
+    try {
+        while (state.confirmed !== state.desired) {
+            const targetState = state.desired;
+            const requestVersion = state.version;
+
+            try {
+                const response = await fetch(targetState ? state.storeUrl : state.destroyUrl, {
+                    method: targetState ? 'POST' : 'DELETE',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: targetState ? JSON.stringify({ tmdb_id: state.tmdbId }) : null,
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'コレクションを更新できませんでした。');
+                }
+
+                state.confirmed = targetState;
+                state.destroyUrl = targetState ? data.destroy_url : null;
+                updateCollectionFormActions(state);
+            } catch (error) {
+                const isLatestIntent = state.version === requestVersion && state.desired === targetState;
+
+                if (isLatestIntent) {
+                    state.desired = state.confirmed;
+                    renderCollectionVisualState(state.tmdbId, state.confirmed);
+                }
+
+                showCollectionError(error.message || '通信に失敗しました。もう一度お試しください。');
+                break;
+            }
+        }
+    } finally {
+        state.processing = false;
+
+        if (state.confirmed !== state.desired) {
+            syncCollectionState(state);
+        }
+    }
 }
 
 function updateScrollFades(scroller) {
@@ -282,55 +370,10 @@ document.addEventListener('submit', async (event) => {
 
     event.preventDefault();
 
-    const wasCollected = form.dataset.collected === 'true';
-    const tmdbId = Number(form.dataset.tmdbId);
-    const relatedForms = [...collectionFormsFor(tmdbId)];
-    const previousStates = relatedForms.map((relatedForm) => ({
-        form: relatedForm,
-        action: relatedForm.action,
-        collected: relatedForm.dataset.collected === 'true',
-        icon: relatedForm.querySelector('.toggle-icon').innerHTML,
-    }));
+    const state = collectionStateFor(form);
 
-    relatedForms.forEach((relatedForm) => {
-        relatedForm.querySelector('button').disabled = true;
-        relatedForm.querySelector('.toggle-icon').innerHTML = icons.loading;
-    });
-
-    try {
-        const response = await fetch(form.action, {
-            method: wasCollected ? 'DELETE' : 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: wasCollected ? null : JSON.stringify({ tmdb_id: tmdbId }),
-        });
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || '操作に失敗しました。');
-        }
-
-        if (wasCollected) {
-            renderCollectionState(tmdbId, false);
-        } else {
-            renderCollectionState(data.tmdb_id ?? tmdbId, true, data.destroy_url);
-        }
-
-        showNotice(data.message);
-    } catch (error) {
-        previousStates.forEach((previousState) => {
-            previousState.form.action = previousState.action;
-            renderButton(previousState.form, previousState.collected);
-            previousState.form.querySelector('.toggle-icon').innerHTML = previousState.icon;
-        });
-        showNotice(error.message || '通信に失敗しました。もう一度お試しください。', true);
-    } finally {
-        relatedForms.forEach((relatedForm) => {
-            relatedForm.querySelector('button').disabled = false;
-        });
-    }
+    state.desired = !state.desired;
+    state.version += 1;
+    renderCollectionVisualState(state.tmdbId, state.desired);
+    syncCollectionState(state);
 });
