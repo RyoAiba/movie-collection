@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\SaveMovieReviewRequest;
 use App\Http\Requests\StoreMovieRequest;
 use App\Http\Requests\UpdateMovieRequest;
 use App\Models\Movie;
@@ -75,7 +76,8 @@ class MovieController extends Controller
             ], 502);
         }
 
-        $collectionId = Movie::query()->where('tmdb_id', $tmdbId)->value('id');
+        $collectionMovie = Movie::query()->where('tmdb_id', $tmdbId)->first();
+        $collectionId = $collectionMovie?->id;
         $director = collect($movie['credits']['crew'] ?? [])->firstWhere('job', 'Director');
         $cast = collect($movie['credits']['cast'] ?? [])->take(10);
         $trailer = collect($movie['videos']['results'] ?? [])
@@ -87,7 +89,13 @@ class MovieController extends Controller
             })
             ->first();
 
-        return view('movies.show', compact('movie', 'collectionId', 'director', 'cast', 'trailer'));
+        try {
+            $tmdbReviews = collect($this->tmdb->movieReviews($tmdbId))->take(10);
+        } catch (ConnectionException|RequestException) {
+            $tmdbReviews = collect();
+        }
+
+        return view('movies.show', compact('movie', 'collectionMovie', 'collectionId', 'director', 'cast', 'trailer', 'tmdbReviews'));
     }
 
     public function store(StoreMovieRequest $request): RedirectResponse|JsonResponse
@@ -133,6 +141,38 @@ class MovieController extends Controller
         $movie->update($request->validated());
 
         return redirect()->route('movies.index')->with('success', '評価とレビューを更新しました。');
+    }
+
+    public function saveReview(SaveMovieReviewRequest $request, int $tmdbId): JsonResponse
+    {
+        $movie = Movie::query()->where('tmdb_id', $tmdbId)->first();
+
+        if (! $movie) {
+            try {
+                $tmdbMovie = $this->tmdb->movie($tmdbId);
+            } catch (ConnectionException|RequestException) {
+                return response()->json([
+                    'message' => '映画情報を取得できなかったため、レビューを保存できませんでした。',
+                ], 502);
+            }
+
+            $movie = Movie::query()->create([
+                'tmdb_id' => $tmdbMovie['id'],
+                'title' => $tmdbMovie['title'],
+                'overview' => $tmdbMovie['overview'] ?: null,
+                'poster_path' => $tmdbMovie['poster_path'] ?? null,
+                'release_date' => $tmdbMovie['release_date'] ?: null,
+            ]);
+        }
+
+        $movie->update($request->validated());
+
+        return response()->json([
+            'message' => 'レビューを保存しました。',
+            'movie_id' => $movie->id,
+            'tmdb_id' => $movie->tmdb_id,
+            'destroy_url' => route('movies.destroy', $movie),
+        ]);
     }
 
     public function destroy(Movie $movie): RedirectResponse|JsonResponse

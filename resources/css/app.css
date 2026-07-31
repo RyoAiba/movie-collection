@@ -40,3 +40,34 @@
     width: 1rem;
     height: 1rem;
 }
+
+.star-rating label:hover,
+.star-rating label:hover ~ label {
+    color: rgb(251 191 36);
+}
+
+.star-rating input:checked ~ label {
+    color: rgb(251 191 36);
+}
+
+.review-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 35%) transparent;
+}
+
+.review-scroller::-webkit-scrollbar {
+    width: 5px;
+}
+
+.review-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.review-scroller::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: rgb(148 163 184 / 35%);
+}
+
+.review-scroller:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225 / 55%);
+}

@@ -67,6 +67,83 @@ window.addEventListener('resize', () => {
     fadeScrollers.forEach(updateScrollFades);
 });
 
+document.querySelectorAll('.review-body').forEach((reviewBody) => {
+    const button = reviewBody.nextElementSibling;
+
+    if (button && reviewBody.scrollHeight > reviewBody.clientHeight + 1) {
+        button.classList.remove('hidden');
+    }
+});
+
+document.addEventListener('click', (event) => {
+    const button = event.target.closest('.review-expand');
+
+    if (!button) {
+        return;
+    }
+
+    const reviewBody = button.previousElementSibling;
+    const isExpanded = !reviewBody.classList.contains('line-clamp-5');
+
+    reviewBody.classList.toggle('line-clamp-5', isExpanded);
+    button.textContent = isExpanded ? '続きを読む' : '閉じる';
+    button.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+});
+
+document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('.movie-review-form');
+
+    if (!form) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const button = form.querySelector('button[type="submit"]');
+    const message = form.querySelector('.review-save-message');
+    const formData = new FormData(form);
+
+    button.disabled = true;
+    message.classList.add('hidden');
+
+    try {
+        const response = await fetch(form.action, {
+            method: 'PUT',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                rating: Number(formData.get('rating')) || null,
+                review: formData.get('review'),
+            }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            const validationMessage = data.errors ? Object.values(data.errors).flat()[0] : null;
+            throw new Error(validationMessage || data.message || 'レビューを保存できませんでした。');
+        }
+
+        message.textContent = data.message;
+        message.className = 'review-save-message mt-2 text-xs text-emerald-400';
+
+        const collectionForm = document.querySelector(`.collection-toggle[data-tmdb-id="${data.tmdb_id}"]`);
+
+        if (collectionForm && collectionForm.dataset.collected !== 'true') {
+            collectionForm.action = data.destroy_url;
+            renderButton(collectionForm, true);
+        }
+    } catch (error) {
+        message.textContent = error.message || '通信に失敗しました。もう一度お試しください。';
+        message.className = 'review-save-message mt-2 text-xs text-red-400';
+    } finally {
+        button.disabled = false;
+    }
+});
+
 document.addEventListener('submit', async (event) => {
     const form = event.target.closest('.collection-toggle');
 

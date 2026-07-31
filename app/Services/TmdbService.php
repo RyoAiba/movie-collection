@@ -83,6 +83,17 @@ class TmdbService
             ->json();
     }
 
+    public function movieReviews(int $tmdbId): array
+    {
+        return $this->client()
+            ->get("/movie/{$tmdbId}/reviews", [
+                'language' => config('services.tmdb.language'),
+                'page' => 1,
+            ])
+            ->throw()
+            ->json('results', []);
+    }
+
     public function posterUrl(?string $path, string $size = 'w500'): ?string
     {
         return $path ? "https://image.tmdb.org/t/p/{$size}{$path}" : null;

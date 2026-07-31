@@ -147,7 +147,7 @@ test('映画詳細と出演者と日本語予告編を表示できる', function
 
     Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.themoviedb.org/3/movie/123')
         && $request['language'] === config('services.tmdb.language')
-        && $request['append_to_response'] === 'credits,videos');
+        && ($request['append_to_response'] ?? null) === 'credits,videos');
 });
 
 test('存在しないTMDB映画は404を返す', function () {
@@ -186,6 +186,107 @@ test('TMDBの詳細情報から映画をコレクションに追加できる', f
     $this->assertDatabaseHas('movies', [
         'tmdb_id' => 123,
         'title' => 'テスト映画',
+    ]);
+});
+
+test('映画詳細にTMDBレビューを表示できる', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/123/reviews*' => Http::response([
+            'results' => [[
+                'author' => 'レビュー投稿者',
+                'author_details' => ['rating' => 8.0],
+                'content' => 'TMDBから取得したレビュー本文です。',
+            ]],
+        ]),
+        'api.themoviedb.org/3/movie/123*' => Http::response([
+            'id' => 123,
+            'title' => 'レビュー対象映画',
+            'original_title' => 'Review Movie',
+            'overview' => '',
+            'poster_path' => null,
+            'backdrop_path' => null,
+            'release_date' => '',
+            'runtime' => null,
+            'genres' => [],
+            'credits' => ['crew' => [], 'cast' => []],
+            'videos' => ['results' => []],
+        ]),
+    ]);
+
+    $this->get('/movies/123')
+        ->assertOk()
+        ->assertSee('あなたのレビュー')
+        ->assertSee('みんなのレビュー')
+        ->assertSee('レビュー投稿者')
+        ->assertSee('TMDBから取得したレビュー本文です。');
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/movie/123/reviews')
+        && $request['language'] === config('services.tmdb.language'));
+});
+
+test('TMDBレビュー取得に失敗しても映画詳細を表示できる', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/123/reviews*' => Http::response([], 500),
+        'api.themoviedb.org/3/movie/123*' => Http::response([
+            'id' => 123,
+            'title' => '詳細表示できる映画',
+            'original_title' => 'Movie',
+            'overview' => '',
+            'poster_path' => null,
+            'backdrop_path' => null,
+            'release_date' => '',
+            'runtime' => null,
+            'genres' => [],
+            'credits' => ['crew' => [], 'cast' => []],
+            'videos' => ['results' => []],
+        ]),
+    ]);
+
+    $this->get('/movies/123')
+        ->assertOk()
+        ->assertSee('詳細表示できる映画')
+        ->assertSee('レビューはまだありません');
+});
+
+test('詳細画面から評価とレビューを非同期保存できる', function () {
+    $movie = Movie::query()->create([
+        'tmdb_id' => 123,
+        'title' => '保存済み映画',
+    ]);
+
+    $this->putJson(route('movies.review.save', 123), [
+        'rating' => 4,
+        'review' => '詳細画面から保存しました。',
+    ])
+        ->assertOk()
+        ->assertJsonPath('message', 'レビューを保存しました。')
+        ->assertJsonPath('destroy_url', route('movies.destroy', $movie));
+
+    expect($movie->fresh())
+        ->rating->toBe(4)
+        ->review->toBe('詳細画面から保存しました。');
+});
+
+test('未保存映画のレビュー保存時にコレクションへ追加する', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/456*' => Http::response([
+            'id' => 456,
+            'title' => '新規レビュー映画',
+            'overview' => '概要',
+            'poster_path' => '/poster.jpg',
+            'release_date' => '2026-07-01',
+        ]),
+    ]);
+
+    $this->putJson(route('movies.review.save', 456), [
+        'rating' => 5,
+        'review' => 'お気に入りです。',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('movies', [
+        'tmdb_id' => 456,
+        'rating' => 5,
+        'review' => 'お気に入りです。',
     ]);
 });
 
