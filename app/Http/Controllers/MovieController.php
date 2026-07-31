@@ -38,9 +38,16 @@ class MovieController extends Controller
             $popularError = '人気作品を取得できませんでした。時間をおいて再度お試しください。';
         }
 
-        $collectedMovies = Movie::query()->pluck('id', 'tmdb_id');
+        $collection = Movie::query()->latest()->get();
+        $collectedMovies = $collection->pluck('id', 'tmdb_id');
+        $collectionMovies = $collection->map(fn (Movie $movie): array => [
+            'id' => $movie->tmdb_id,
+            'title' => $movie->title,
+            'poster_path' => $movie->poster_path,
+            'release_date' => $movie->release_date?->toDateString(),
+        ])->all();
 
-        return view('movies.home', compact('movies', 'popularMovies', 'fiscalYear', 'collectedMovies', 'apiError', 'popularError'));
+        return view('movies.home', compact('movies', 'popularMovies', 'collectionMovies', 'fiscalYear', 'collectedMovies', 'apiError', 'popularError'));
     }
 
     public function index(): View

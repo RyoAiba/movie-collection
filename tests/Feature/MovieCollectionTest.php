@@ -82,6 +82,29 @@ test('人気作品が0件の場合はカテゴリを表示しない', function (
         ->assertDontSee('2026年の人気作品');
 });
 
+test('トップページにマイコレクションを共通カードで表示する', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-07-30'));
+
+    $movie = Movie::query()->create([
+        'tmdb_id' => 789,
+        'title' => '保存済み映画',
+        'poster_path' => '/saved.jpg',
+        'release_date' => '2026-05-01',
+    ]);
+
+    Http::fake([
+        'api.themoviedb.org/3/movie/now_playing*' => Http::response(['results' => []]),
+        'api.themoviedb.org/3/discover/movie*' => Http::response(['results' => []]),
+    ]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('マイコレクション')
+        ->assertSee('保存済み映画')
+        ->assertSee(route('movies.show', $movie->tmdb_id))
+        ->assertSee('aria-pressed="true"', false);
+});
+
 test('映画詳細と出演者と日本語予告編を表示できる', function () {
     Http::fake([
         'api.themoviedb.org/3/movie/123*' => Http::response([

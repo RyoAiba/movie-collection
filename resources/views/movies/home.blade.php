@@ -30,4 +30,18 @@
             @endif
         </section>
     @endif
+
+    <section class="mt-16">
+        <div class="mb-6">
+            <h2 class="text-3xl font-bold tracking-tight">マイコレクション</h2>
+        </div>
+
+        @if (empty($collectionMovies))
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-slate-400">
+                コレクションに追加した映画がここに表示されます。
+            </div>
+        @else
+            @include('movies.partials.horizontal-movie-list', ['items' => $collectionMovies])
+        @endif
+    </section>
 @endsection
