@@ -164,6 +164,17 @@ function renderButton(form, collected) {
     form.dataset.collected = collected ? 'true' : 'false';
 }
 
+function collectionFormsFor(tmdbId) {
+    return document.querySelectorAll(`.collection-toggle[data-tmdb-id="${tmdbId}"]`);
+}
+
+function renderCollectionState(tmdbId, collected, destroyUrl = null) {
+    collectionFormsFor(tmdbId).forEach((form) => {
+        form.action = collected ? destroyUrl : form.dataset.storeUrl;
+        renderButton(form, collected);
+    });
+}
+
 function updateScrollFades(scroller) {
     const container = scroller.parentElement;
     const leftFade = container.querySelector('.scroll-fade-left');
@@ -253,12 +264,7 @@ document.addEventListener('submit', async (event) => {
         message.textContent = data.message;
         message.className = 'review-save-message mt-2 text-xs text-emerald-400';
 
-        const collectionForm = document.querySelector(`.collection-toggle[data-tmdb-id="${data.tmdb_id}"]`);
-
-        if (collectionForm && collectionForm.dataset.collected !== 'true') {
-            collectionForm.action = data.destroy_url;
-            renderButton(collectionForm, true);
-        }
+        renderCollectionState(data.tmdb_id, true, data.destroy_url);
     } catch (error) {
         message.textContent = error.message || '通信に失敗しました。もう一度お試しください。';
         message.className = 'review-save-message mt-2 text-xs text-red-400';
@@ -276,13 +282,20 @@ document.addEventListener('submit', async (event) => {
 
     event.preventDefault();
 
-    const button = form.querySelector('button');
-    const icon = form.querySelector('.toggle-icon');
     const wasCollected = form.dataset.collected === 'true';
-    const previousIcon = icon.innerHTML;
+    const tmdbId = Number(form.dataset.tmdbId);
+    const relatedForms = [...collectionFormsFor(tmdbId)];
+    const previousStates = relatedForms.map((relatedForm) => ({
+        form: relatedForm,
+        action: relatedForm.action,
+        collected: relatedForm.dataset.collected === 'true',
+        icon: relatedForm.querySelector('.toggle-icon').innerHTML,
+    }));
 
-    button.disabled = true;
-    icon.innerHTML = icons.loading;
+    relatedForms.forEach((relatedForm) => {
+        relatedForm.querySelector('button').disabled = true;
+        relatedForm.querySelector('.toggle-icon').innerHTML = icons.loading;
+    });
 
     try {
         const response = await fetch(form.action, {
@@ -293,7 +306,7 @@ document.addEventListener('submit', async (event) => {
                 'X-CSRF-TOKEN': csrfToken,
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            body: wasCollected ? null : JSON.stringify({ tmdb_id: Number(form.dataset.tmdbId) }),
+            body: wasCollected ? null : JSON.stringify({ tmdb_id: tmdbId }),
         });
         const data = await response.json();
 
@@ -302,18 +315,22 @@ document.addEventListener('submit', async (event) => {
         }
 
         if (wasCollected) {
-            form.action = form.dataset.storeUrl;
-            renderButton(form, false);
+            renderCollectionState(tmdbId, false);
         } else {
-            form.action = data.destroy_url;
-            renderButton(form, true);
+            renderCollectionState(data.tmdb_id ?? tmdbId, true, data.destroy_url);
         }
 
         showNotice(data.message);
     } catch (error) {
-        icon.innerHTML = previousIcon;
+        previousStates.forEach((previousState) => {
+            previousState.form.action = previousState.action;
+            renderButton(previousState.form, previousState.collected);
+            previousState.form.querySelector('.toggle-icon').innerHTML = previousState.icon;
+        });
         showNotice(error.message || '通信に失敗しました。もう一度お試しください。', true);
     } finally {
-        button.disabled = false;
+        relatedForms.forEach((relatedForm) => {
+            relatedForm.querySelector('button').disabled = false;
+        });
     }
 });

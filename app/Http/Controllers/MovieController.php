@@ -6,6 +6,7 @@ use App\Http\Requests\SaveMovieReviewRequest;
 use App\Http\Requests\StoreMovieRequest;
 use App\Http\Requests\UpdateMovieRequest;
 use App\Models\Movie;
+use App\Services\MovieCollectionService;
 use App\Services\TmdbService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -16,7 +17,10 @@ use Illuminate\View\View;
 
 class MovieController extends Controller
 {
-    public function __construct(private readonly TmdbService $tmdb) {}
+    public function __construct(
+        private readonly TmdbService $tmdb,
+        private readonly MovieCollectionService $collection,
+    ) {}
 
     public function home(): View
     {
@@ -81,18 +85,11 @@ class MovieController extends Controller
             ], 502);
         }
 
-        $collectionMovie = Movie::query()->where('tmdb_id', $tmdbId)->first();
+        $collectionMovie = $this->collection->findByTmdbId($tmdbId);
         $collectionId = $collectionMovie?->id;
         $director = collect($movie['credits']['crew'] ?? [])->firstWhere('job', 'Director');
         $cast = collect($movie['credits']['cast'] ?? [])->take(10);
-        $trailer = collect($movie['videos']['results'] ?? [])
-            ->filter(fn (array $video): bool => ($video['site'] ?? null) === 'YouTube' && ($video['type'] ?? null) === 'Trailer')
-            ->sortBy(fn (array $video): int => match ($video['iso_639_1'] ?? null) {
-                'ja' => 0,
-                'en' => 1,
-                default => 2,
-            })
-            ->first();
+        $trailer = $this->tmdb->preferredVideo($movie['videos']['results'] ?? [], allowTeaser: false);
 
         try {
             $tmdbReviews = collect($this->tmdb->movieReviews($tmdbId))->take(10);
@@ -105,8 +102,15 @@ class MovieController extends Controller
 
     public function store(StoreMovieRequest $request): RedirectResponse|JsonResponse
     {
+        $tmdbId = $request->integer('tmdb_id');
+        $movie = $this->collection->findByTmdbId($tmdbId);
+
+        if ($movie) {
+            return $this->collectionStoredResponse($request, $movie, false);
+        }
+
         try {
-            $tmdbMovie = $this->tmdb->movie($request->integer('tmdb_id'));
+            $tmdbMovie = $this->tmdb->movie($tmdbId);
         } catch (ConnectionException|RequestException) {
             if ($request->expectsJson()) {
                 return response()->json([
@@ -117,23 +121,9 @@ class MovieController extends Controller
             return back()->with('error', '映画情報を取得できなかったため、追加できませんでした。');
         }
 
-        $movie = Movie::query()->create([
-            'tmdb_id' => $tmdbMovie['id'],
-            'title' => $tmdbMovie['title'],
-            'overview' => $tmdbMovie['overview'] ?: null,
-            'poster_path' => $tmdbMovie['poster_path'] ?? null,
-            'release_date' => $tmdbMovie['release_date'] ?: null,
-        ]);
+        $movie = $this->collection->firstOrCreateFromTmdb($tmdbMovie);
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'message' => 'コレクションに追加しました。',
-                'movie_id' => $movie->id,
-                'destroy_url' => route('movies.destroy', $movie),
-            ], 201);
-        }
-
-        return back()->with('success', '「'.$tmdbMovie['title'].'」をコレクションに追加しました。');
+        return $this->collectionStoredResponse($request, $movie, $movie->wasRecentlyCreated);
     }
 
     public function edit(Movie $movie): View
@@ -150,7 +140,7 @@ class MovieController extends Controller
 
     public function saveReview(SaveMovieReviewRequest $request, int $tmdbId): JsonResponse
     {
-        $movie = Movie::query()->where('tmdb_id', $tmdbId)->first();
+        $movie = $this->collection->findByTmdbId($tmdbId);
 
         if (! $movie) {
             try {
@@ -161,13 +151,7 @@ class MovieController extends Controller
                 ], 502);
             }
 
-            $movie = Movie::query()->create([
-                'tmdb_id' => $tmdbMovie['id'],
-                'title' => $tmdbMovie['title'],
-                'overview' => $tmdbMovie['overview'] ?: null,
-                'poster_path' => $tmdbMovie['poster_path'] ?? null,
-                'release_date' => $tmdbMovie['release_date'] ?: null,
-            ]);
+            $movie = $this->collection->firstOrCreateFromTmdb($tmdbMovie);
         }
 
         $movie->update($request->validated());
@@ -192,5 +176,22 @@ class MovieController extends Controller
         }
 
         return redirect()->route('movies.index')->with('success', '「'.$title.'」をコレクションから削除しました。');
+    }
+
+    private function collectionStoredResponse(StoreMovieRequest $request, Movie $movie, bool $created): RedirectResponse|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $created ? 'コレクションに追加しました。' : 'コレクションに追加済みです。',
+                'movie_id' => $movie->id,
+                'tmdb_id' => $movie->tmdb_id,
+                'destroy_url' => route('movies.destroy', $movie),
+            ], $created ? 201 : 200);
+        }
+
+        return back()->with(
+            'success',
+            $created ? '「'.$movie->title.'」をコレクションに追加しました。' : '「'.$movie->title.'」は追加済みです。',
+        );
     }
 }

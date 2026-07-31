@@ -90,6 +90,14 @@ test('カルーセル候補はYouTubeのTrailerをTeaserより優先する', fun
 
     expect($candidates)->toHaveCount(1)
         ->and($candidates[0]['video_id'])->toBe('youtube-trailer');
+
+    app(TmdbService::class)->trailerCarouselCandidates([[
+        'id' => 8123,
+        'title' => '予告編あり映画',
+        'backdrop_path' => '/backdrop.jpg',
+    ]]);
+
+    Http::assertSentCount(1);
 });
 
 test('カルーセル候補は英語より日本語の動画を優先する', function () {
@@ -114,6 +122,31 @@ test('カルーセル候補は英語より日本語の動画を優先する', fu
     ]]);
 
     expect($candidates[0]['video_id'])->toBe('japanese-trailer');
+});
+
+test('日本語にTrailerがない場合だけ英語へフォールバックする', function () {
+    Http::fake(function (Request $request) {
+        $language = $request['language'];
+
+        return Http::response([
+            'results' => [[
+                'site' => 'YouTube',
+                'type' => $language === 'en-US' ? 'Trailer' : 'Teaser',
+                'key' => $language === 'en-US' ? 'english-trailer' : 'japanese-teaser',
+                'iso_639_1' => $language === 'en-US' ? 'en' : 'ja',
+                'official' => true,
+            ]],
+        ]);
+    });
+
+    $candidates = app(TmdbService::class)->trailerCarouselCandidates([[
+        'id' => 8345,
+        'title' => 'フォールバック映画',
+        'backdrop_path' => '/backdrop.jpg',
+    ]]);
+
+    expect($candidates[0]['video_id'])->toBe('english-trailer');
+    Http::assertSentCount(2);
 });
 
 test('予告編候補が0件でもトップページを表示できる', function () {
@@ -149,7 +182,7 @@ test('動画取得失敗時も既存カテゴリを表示できる', function ()
                 'release_date' => '2026-07-01',
             ]],
         ]),
-        'api.themoviedb.org/3/movie/9345/videos*' => Http::response([], 500),
+        'api.themoviedb.org/3/movie/9345/videos*' => Http::failedConnection(),
         'api.themoviedb.org/3/discover/movie*' => Http::response([
             'results' => [[
                 'id' => 456,
@@ -407,6 +440,22 @@ test('映画を非同期で追加すると解除URLを返す', function () {
 
     $response->assertJsonPath('movie_id', $movie->id)
         ->assertJsonPath('destroy_url', route('movies.destroy', $movie));
+});
+
+test('追加済み映画への重複リクエストを正常な追加済みレスポンスとして扱う', function () {
+    $movie = Movie::query()->create([
+        'tmdb_id' => 567,
+        'title' => '追加済み映画',
+    ]);
+
+    $this->postJson('/collection', ['tmdb_id' => 567])
+        ->assertOk()
+        ->assertJsonPath('message', 'コレクションに追加済みです。')
+        ->assertJsonPath('tmdb_id', 567)
+        ->assertJsonPath('destroy_url', route('movies.destroy', $movie));
+
+    expect(Movie::query()->where('tmdb_id', 567)->count())->toBe(1);
+    Http::assertNothingSent();
 });
 
 test('追加済み映画を上映中一覧から非同期で解除できる', function () {

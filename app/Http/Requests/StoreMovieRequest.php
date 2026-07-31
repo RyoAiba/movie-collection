@@ -14,14 +14,7 @@ class StoreMovieRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tmdb_id' => ['required', 'integer', 'min:1', 'unique:movies,tmdb_id'],
-        ];
-    }
-
-    public function messages(): array
-    {
-        return [
-            'tmdb_id.unique' => 'この映画はすでにコレクションに追加されています。',
+            'tmdb_id' => ['required', 'integer', 'min:1'],
         ];
     }
 }

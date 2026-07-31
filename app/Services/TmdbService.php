@@ -4,9 +4,9 @@ namespace App\Services;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -101,62 +101,79 @@ class TmdbService
 
     public function trailerCarouselCandidates(array $movies): array
     {
+        $uniqueMovies = collect(array_slice($movies, 0, 10))
+            ->filter(fn (array $movie): bool => (int) ($movie['id'] ?? 0) > 0)
+            ->unique(fn (array $movie): int => (int) $movie['id'])
+            ->values();
+        $movieIds = $uniqueMovies->pluck('id')->map(fn ($id): int => (int) $id)->all();
+
+        if ($movieIds === []) {
+            return [];
+        }
+
+        $language = (string) config('services.tmdb.language');
+        $candidateCacheKey = 'tmdb:trailer-carousel:'.sha1($language.':'.implode(',', $movieIds));
+
+        if (Cache::has($candidateCacheKey)) {
+            return Cache::get($candidateCacheKey);
+        }
+
+        $localizedVideos = $this->cachedMovieVideos($movieIds, $language);
+        $englishFallbackIds = array_values(array_filter(
+            $movieIds,
+            fn (int $movieId): bool => ! $this->preferredVideo($localizedVideos[$movieId] ?? [], allowTeaser: false),
+        ));
+        $englishVideos = $this->cachedMovieVideos($englishFallbackIds, 'en-US');
         $candidates = [];
-        $seenMovieIds = [];
 
-        foreach (array_slice($movies, 0, 10) as $movie) {
-            $movieId = (int) ($movie['id'] ?? 0);
-
-            if (! $movieId || isset($seenMovieIds[$movieId])) {
-                continue;
-            }
-
-            $seenMovieIds[$movieId] = true;
-            $videos = [];
-
-            foreach ([config('services.tmdb.language'), 'en-US'] as $language) {
-                try {
-                    $videos = [...$videos, ...$this->movieVideos($movieId, $language)];
-                } catch (ConnectionException|RequestException) {
-                    // A failed video request must not prevent other movies from being considered.
-                }
-            }
-
-            $video = collect($videos)
-                ->filter(fn (array $video): bool => ($video['site'] ?? null) === 'YouTube'
-                    && in_array($video['type'] ?? null, ['Trailer', 'Teaser'], true)
-                    && ! empty($video['key']))
-                ->unique('key')
-                ->sortBy(fn (array $video): array => [
-                    ($video['type'] ?? null) === 'Trailer' ? 0 : 1,
-                    match ($video['iso_639_1'] ?? null) {
-                        'ja' => 0,
-                        'en' => 1,
-                        default => 2,
-                    },
-                    ($video['official'] ?? false) ? 0 : 1,
-                ])
-                ->first();
-
-            if (! $video) {
-                continue;
-            }
-
-            $candidates[] = [
-                'id' => $movieId,
-                'title' => $movie['title'] ?? '',
-                'video_id' => $video['key'],
-                'backdrop_url' => ! empty($movie['backdrop_path'])
-                    ? 'https://image.tmdb.org/t/p/original'.$movie['backdrop_path']
-                    : null,
+        foreach ($uniqueMovies as $movie) {
+            $movieId = (int) $movie['id'];
+            $videos = [
+                ...($localizedVideos[$movieId] ?? []),
+                ...($englishVideos[$movieId] ?? []),
             ];
+            $video = $this->preferredVideo($videos);
+
+            if ($video) {
+                $candidates[] = [
+                    'id' => $movieId,
+                    'title' => $movie['title'] ?? '',
+                    'video_id' => $video['key'],
+                    'backdrop_url' => ! empty($movie['backdrop_path'])
+                        ? 'https://image.tmdb.org/t/p/original'.$movie['backdrop_path']
+                        : null,
+                ];
+            }
 
             if (count($candidates) === 5) {
                 break;
             }
         }
 
+        Cache::put($candidateCacheKey, $candidates, $candidates === [] ? 600 : self::VIDEO_CACHE_SECONDS);
+
         return $candidates;
+    }
+
+    public function preferredVideo(array $videos, bool $allowTeaser = true): ?array
+    {
+        $allowedTypes = $allowTeaser ? ['Trailer', 'Teaser'] : ['Trailer'];
+
+        return collect($videos)
+            ->filter(fn (array $video): bool => ($video['site'] ?? null) === 'YouTube'
+                && in_array($video['type'] ?? null, $allowedTypes, true)
+                && ! empty($video['key']))
+            ->unique('key')
+            ->sortBy(fn (array $video): array => [
+                ($video['type'] ?? null) === 'Trailer' ? 0 : 1,
+                match ($video['iso_639_1'] ?? null) {
+                    'ja' => 0,
+                    'en' => 1,
+                    default => 2,
+                },
+                ($video['official'] ?? false) ? 0 : 1,
+            ])
+            ->first();
     }
 
     public function posterUrl(?string $path, string $size = 'w500'): ?string
@@ -164,16 +181,60 @@ class TmdbService
         return $path ? "https://image.tmdb.org/t/p/{$size}{$path}" : null;
     }
 
-    private function movieVideos(int $tmdbId, string $language): array
+    /**
+     * @return array<int, array>
+     */
+    private function cachedMovieVideos(array $movieIds, string $language): array
     {
-        return Cache::remember(
-            "tmdb:movie:{$tmdbId}:videos:{$language}",
-            self::VIDEO_CACHE_SECONDS,
-            fn (): array => $this->client()
-                ->get("/movie/{$tmdbId}/videos", ['language' => $language])
-                ->throw()
-                ->json('results', []),
-        );
+        $videos = [];
+        $missingIds = [];
+
+        foreach ($movieIds as $movieId) {
+            $cacheKey = $this->videoCacheKey($movieId, $language);
+
+            if (Cache::has($cacheKey)) {
+                $videos[$movieId] = Cache::get($cacheKey);
+            } else {
+                $missingIds[] = $movieId;
+            }
+        }
+
+        if ($missingIds === []) {
+            return $videos;
+        }
+
+        try {
+            $responses = Http::pool(fn (Pool $pool): array => array_map(
+                fn (int $movieId) => $pool
+                    ->as((string) $movieId)
+                    ->withToken((string) config('services.tmdb.token'))
+                    ->acceptJson()
+                    ->timeout(10)
+                    ->get(self::BASE_URL."/movie/{$movieId}/videos", ['language' => $language]),
+                $missingIds,
+            ));
+        } catch (ConnectionException) {
+            return $videos;
+        }
+
+        foreach ($missingIds as $movieId) {
+            $response = $responses[(string) $movieId] ?? null;
+
+            if (! $response instanceof Response || ! $response->successful()) {
+                continue;
+            }
+
+            $movieVideos = $response->json('results', []);
+            $videos[$movieId] = $movieVideos;
+            Cache::put($this->videoCacheKey($movieId, $language), $movieVideos, self::VIDEO_CACHE_SECONDS);
+        }
+
+        return $videos;
+    }
+
+    private function videoCacheKey(int $tmdbId, string $language): string
+    {
+        return "tmdb:movie:{$tmdbId}:videos:{$language}";
     }
 
     private function client(): PendingRequest
