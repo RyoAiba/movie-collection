@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\Movie;
+use App\Services\TmdbService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -67,6 +69,102 @@ test('人気映画の取得失敗時も上映中映画を表示できる', funct
         ->assertOk()
         ->assertSee('上映中のテスト映画')
         ->assertSee('人気作品を取得できませんでした。');
+});
+
+test('カルーセル候補はYouTubeのTrailerをTeaserより優先する', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/8123/videos*' => Http::response([
+            'results' => [
+                ['site' => 'Vimeo', 'type' => 'Trailer', 'key' => 'vimeo-trailer', 'iso_639_1' => 'ja', 'official' => true],
+                ['site' => 'YouTube', 'type' => 'Teaser', 'key' => 'youtube-teaser', 'iso_639_1' => 'ja', 'official' => true],
+                ['site' => 'YouTube', 'type' => 'Trailer', 'key' => 'youtube-trailer', 'iso_639_1' => 'ja', 'official' => true],
+            ],
+        ]),
+    ]);
+
+    $candidates = app(TmdbService::class)->trailerCarouselCandidates([[
+        'id' => 8123,
+        'title' => '予告編あり映画',
+        'backdrop_path' => '/backdrop.jpg',
+    ]]);
+
+    expect($candidates)->toHaveCount(1)
+        ->and($candidates[0]['video_id'])->toBe('youtube-trailer');
+});
+
+test('カルーセル候補は英語より日本語の動画を優先する', function () {
+    Http::fake(function (Request $request) {
+        $language = $request['language'];
+
+        return Http::response([
+            'results' => [[
+                'site' => 'YouTube',
+                'type' => 'Trailer',
+                'key' => $language === 'en-US' ? 'english-trailer' : 'japanese-trailer',
+                'iso_639_1' => $language === 'en-US' ? 'en' : 'ja',
+                'official' => true,
+            ]],
+        ]);
+    });
+
+    $candidates = app(TmdbService::class)->trailerCarouselCandidates([[
+        'id' => 8234,
+        'title' => '多言語映画',
+        'backdrop_path' => '/backdrop.jpg',
+    ]]);
+
+    expect($candidates[0]['video_id'])->toBe('japanese-trailer');
+});
+
+test('予告編候補が0件でもトップページを表示できる', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/now_playing*' => Http::response([
+            'results' => [[
+                'id' => 9123,
+                'title' => '予告編なし映画',
+                'poster_path' => '/poster.jpg',
+                'backdrop_path' => '/backdrop.jpg',
+                'release_date' => '2026-07-01',
+            ]],
+        ]),
+        'api.themoviedb.org/3/movie/9123/videos*' => Http::response(['results' => []]),
+        'api.themoviedb.org/3/discover/movie*' => Http::response(['results' => []]),
+    ]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('上映中の映画')
+        ->assertSee('予告編なし映画')
+        ->assertDontSee('trailer-carousel', false);
+});
+
+test('動画取得失敗時も既存カテゴリを表示できる', function () {
+    Http::fake([
+        'api.themoviedb.org/3/movie/now_playing*' => Http::response([
+            'results' => [[
+                'id' => 9345,
+                'title' => '上映中作品',
+                'poster_path' => '/poster.jpg',
+                'backdrop_path' => '/backdrop.jpg',
+                'release_date' => '2026-07-01',
+            ]],
+        ]),
+        'api.themoviedb.org/3/movie/9345/videos*' => Http::response([], 500),
+        'api.themoviedb.org/3/discover/movie*' => Http::response([
+            'results' => [[
+                'id' => 456,
+                'title' => '人気作品',
+                'poster_path' => '/popular.jpg',
+                'release_date' => '2026-07-02',
+            ]],
+        ]),
+    ]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('上映中作品')
+        ->assertSee('人気作品')
+        ->assertSee('マイコレクション');
 });
 
 test('人気作品が0件の場合はカテゴリを表示しない', function () {

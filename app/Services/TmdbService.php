@@ -4,12 +4,17 @@ namespace App\Services;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class TmdbService
 {
     private const BASE_URL = 'https://api.themoviedb.org/3';
+
+    private const VIDEO_CACHE_SECONDS = 21600;
 
     public function nowPlaying(): array
     {
@@ -94,9 +99,81 @@ class TmdbService
             ->json('results', []);
     }
 
+    public function trailerCarouselCandidates(array $movies): array
+    {
+        $candidates = [];
+        $seenMovieIds = [];
+
+        foreach (array_slice($movies, 0, 10) as $movie) {
+            $movieId = (int) ($movie['id'] ?? 0);
+
+            if (! $movieId || isset($seenMovieIds[$movieId])) {
+                continue;
+            }
+
+            $seenMovieIds[$movieId] = true;
+            $videos = [];
+
+            foreach ([config('services.tmdb.language'), 'en-US'] as $language) {
+                try {
+                    $videos = [...$videos, ...$this->movieVideos($movieId, $language)];
+                } catch (ConnectionException|RequestException) {
+                    // A failed video request must not prevent other movies from being considered.
+                }
+            }
+
+            $video = collect($videos)
+                ->filter(fn (array $video): bool => ($video['site'] ?? null) === 'YouTube'
+                    && in_array($video['type'] ?? null, ['Trailer', 'Teaser'], true)
+                    && ! empty($video['key']))
+                ->unique('key')
+                ->sortBy(fn (array $video): array => [
+                    ($video['type'] ?? null) === 'Trailer' ? 0 : 1,
+                    match ($video['iso_639_1'] ?? null) {
+                        'ja' => 0,
+                        'en' => 1,
+                        default => 2,
+                    },
+                    ($video['official'] ?? false) ? 0 : 1,
+                ])
+                ->first();
+
+            if (! $video) {
+                continue;
+            }
+
+            $candidates[] = [
+                'id' => $movieId,
+                'title' => $movie['title'] ?? '',
+                'video_id' => $video['key'],
+                'backdrop_url' => ! empty($movie['backdrop_path'])
+                    ? 'https://image.tmdb.org/t/p/original'.$movie['backdrop_path']
+                    : null,
+            ];
+
+            if (count($candidates) === 5) {
+                break;
+            }
+        }
+
+        return $candidates;
+    }
+
     public function posterUrl(?string $path, string $size = 'w500'): ?string
     {
         return $path ? "https://image.tmdb.org/t/p/{$size}{$path}" : null;
+    }
+
+    private function movieVideos(int $tmdbId, string $language): array
+    {
+        return Cache::remember(
+            "tmdb:movie:{$tmdbId}:videos:{$language}",
+            self::VIDEO_CACHE_SECONDS,
+            fn (): array => $this->client()
+                ->get("/movie/{$tmdbId}/videos", ['language' => $language])
+                ->throw()
+                ->json('results', []),
+        );
     }
 
     private function client(): PendingRequest

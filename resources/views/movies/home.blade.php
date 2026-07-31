@@ -3,6 +3,35 @@
 @section('title', '上映中の映画 | Movie Shelf')
 
 @section('content')
+    @if (!empty($trailerMovies))
+        <section
+            class="trailer-carousel relative mb-10 h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-slate-900 sm:h-[420px] lg:h-[min(540px,42vw)]"
+            data-trailers='@json($trailerMovies)'
+            aria-labelledby="trailer-carousel-title"
+        >
+            <div class="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950"></div>
+            <img
+                class="trailer-backdrop absolute inset-0 h-full w-full object-cover {{ $trailerMovies[0]['backdrop_url'] ? '' : 'hidden' }}"
+                src="{{ $trailerMovies[0]['backdrop_url'] ?? '' }}"
+                alt=""
+                fetchpriority="high"
+            >
+
+            <div class="trailer-player pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-700 ease-out" aria-hidden="true">
+                <div class="trailer-video-frame absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <div id="trailer-youtube-player" class="h-full w-full"></div>
+                </div>
+            </div>
+            <div class="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-black/20"></div>
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-6 pb-7 pt-24 sm:px-10 sm:pb-10">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-red-400">Now Playing</p>
+                <h1 id="trailer-carousel-title" class="trailer-title truncate text-xl font-bold tracking-tight text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
+                    {{ $trailerMovies[0]['title'] }}
+                </h1>
+            </div>
+        </section>
+    @endif
+
     <section>
         <div class="mb-4">
             <h1 class="text-3xl font-bold tracking-tight">上映中の映画</h1>

@@ -24,6 +24,7 @@ class MovieController extends Controller
         $apiError = null;
         $popularMovies = [];
         $popularError = null;
+        $trailerMovies = [];
         $today = now();
         $fiscalYear = $this->tmdb->fiscalYearPeriod($today)['year'];
 
@@ -39,6 +40,10 @@ class MovieController extends Controller
             $popularError = '人気作品を取得できませんでした。時間をおいて再度お試しください。';
         }
 
+        if (! empty($movies)) {
+            $trailerMovies = $this->tmdb->trailerCarouselCandidates($movies);
+        }
+
         $collection = Movie::query()->latest()->get();
         $collectedMovies = $collection->pluck('id', 'tmdb_id');
         $collectionMovies = $collection->map(fn (Movie $movie): array => [
@@ -48,7 +53,7 @@ class MovieController extends Controller
             'release_date' => $movie->release_date?->toDateString(),
         ])->all();
 
-        return view('movies.home', compact('movies', 'popularMovies', 'collectionMovies', 'fiscalYear', 'collectedMovies', 'apiError', 'popularError'));
+        return view('movies.home', compact('movies', 'popularMovies', 'collectionMovies', 'trailerMovies', 'fiscalYear', 'collectedMovies', 'apiError', 'popularError'));
     }
 
     public function index(): View

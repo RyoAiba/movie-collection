@@ -1,5 +1,128 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 
+function initializeTrailerCarousel() {
+    const carousel = document.querySelector('.trailer-carousel');
+
+    if (!carousel || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return;
+    }
+
+    const trailers = JSON.parse(carousel.dataset.trailers || '[]');
+
+    if (!trailers.length) {
+        return;
+    }
+
+    const playerLayer = carousel.querySelector('.trailer-player');
+    const backdrop = carousel.querySelector('.trailer-backdrop');
+    const title = carousel.querySelector('.trailer-title');
+    let player;
+    let currentIndex = 0;
+    let switchTimer;
+    let revealTimer;
+
+    const showBackdrop = () => {
+        window.clearTimeout(revealTimer);
+        playerLayer.classList.remove('opacity-100');
+        playerLayer.classList.add('opacity-0');
+    };
+
+    const updateSlideContent = (trailer) => {
+        title.textContent = trailer.title;
+
+        if (trailer.backdrop_url) {
+            backdrop.src = trailer.backdrop_url;
+            backdrop.classList.remove('hidden');
+        } else {
+            backdrop.removeAttribute('src');
+            backdrop.classList.add('hidden');
+        }
+    };
+
+    const scheduleNext = () => {
+        window.clearTimeout(switchTimer);
+
+        if (trailers.length < 2) {
+            return;
+        }
+
+        switchTimer = window.setTimeout(() => {
+            showBackdrop();
+            player?.stopVideo();
+            currentIndex = (currentIndex + 1) % trailers.length;
+            const nextTrailer = trailers[currentIndex];
+            updateSlideContent(nextTrailer);
+
+            window.setTimeout(() => {
+                player?.loadVideoById(nextTrailer.video_id);
+                scheduleNext();
+            }, 350);
+        }, 10000);
+    };
+
+    window.onYouTubeIframeAPIReady = () => {
+        player = new window.YT.Player('trailer-youtube-player', {
+            width: '100%',
+            height: '100%',
+            videoId: trailers[0].video_id,
+            playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                fs: 0,
+                iv_load_policy: 3,
+                modestbranding: 1,
+                mute: 1,
+                playsinline: 1,
+                rel: 0,
+            },
+            events: {
+                onReady(event) {
+                    event.target.mute();
+                    event.target.playVideo();
+                    scheduleNext();
+                },
+                onStateChange(event) {
+                    if (event.data === window.YT.PlayerState.PLAYING) {
+                        window.clearTimeout(revealTimer);
+                        revealTimer = window.setTimeout(() => {
+                            if (player?.getPlayerState() === window.YT.PlayerState.PLAYING) {
+                                playerLayer.classList.remove('opacity-0');
+                                playerLayer.classList.add('opacity-100');
+                            }
+                        }, 700);
+                    }
+                },
+                onError() {
+                    showBackdrop();
+                    scheduleNext();
+                },
+            },
+        });
+    };
+
+    const loadYouTubeApi = () => {
+        if (window.YT?.Player) {
+            window.onYouTubeIframeAPIReady();
+
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        document.head.append(script);
+    };
+
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(loadYouTubeApi, { timeout: 1500 });
+    } else {
+        window.setTimeout(loadYouTubeApi, 500);
+    }
+}
+
+initializeTrailerCarousel();
+
 const icons = {
     add: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',
     collected: '<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>',

@@ -71,3 +71,17 @@
 .review-scroller:hover::-webkit-scrollbar-thumb {
     background-color: rgb(203 213 225 / 55%);
 }
+
+.trailer-player {
+    container-type: size;
+}
+
+.trailer-video-frame {
+    width: max(100cqw, 177.78cqh);
+    height: max(100cqh, 56.25cqw);
+}
+
+.trailer-video-frame iframe {
+    width: 100%;
+    height: 100%;
+}
