@@ -25,9 +25,9 @@
             <div class="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-black/20"></div>
             <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-6 pb-7 pt-24 sm:px-10 sm:pb-10">
                 <p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-red-400">Now Playing</p>
-                <h1 id="trailer-carousel-title" class="trailer-title truncate text-xl font-bold tracking-tight text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
+                <p id="trailer-carousel-title" class="trailer-title truncate text-xl font-bold tracking-tight text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
                     {{ $trailerMovies[0]['title'] }}
-                </h1>
+                </p>
             </div>
         </section>
     @endif

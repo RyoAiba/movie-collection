@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\SaveMovieReviewRequest;
 use App\Http\Requests\StoreMovieRequest;
-use App\Http\Requests\UpdateMovieRequest;
 use App\Models\Movie;
 use App\Services\MovieCollectionService;
 use App\Services\TmdbService;
@@ -125,18 +124,6 @@ class MovieController extends Controller
         $movie = $this->collection->firstOrCreateFromTmdb($tmdbMovie);
 
         return $this->collectionStoredResponse($request, $movie, $movie->wasRecentlyCreated);
-    }
-
-    public function edit(Movie $movie): View
-    {
-        return view('movies.edit', compact('movie'));
-    }
-
-    public function update(UpdateMovieRequest $request, Movie $movie): RedirectResponse
-    {
-        $movie->update($request->validated());
-
-        return redirect()->route('movies.index')->with('success', '評価とレビューを更新しました。');
     }
 
     public function saveReview(SaveMovieReviewRequest $request, int $tmdbId): JsonResponse

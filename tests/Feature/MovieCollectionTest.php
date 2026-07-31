@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Requests\SaveMovieReviewRequest;
 use App\Models\Movie;
 use App\Services\TmdbService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
 
 uses(RefreshDatabase::class);
 
@@ -518,23 +520,15 @@ test('追加済み映画を上映中一覧から非同期で解除できる', fu
     $this->assertDatabaseMissing('movies', ['id' => $movie->id]);
 });
 
-test('評価は1から5の範囲で更新できる', function () {
-    $movie = Movie::query()->create([
-        'tmdb_id' => 123,
-        'title' => 'テスト映画',
-    ]);
+test('詳細画面の評価は1から5に限定する', function () {
+    $request = new SaveMovieReviewRequest;
+    $validator = Validator::make([
+        'rating' => 6,
+        'review' => '範囲外の評価です。',
+    ], $request->rules(), $request->messages());
 
-    $this->put(route('movies.update', $movie), [
-        'rating' => 5,
-        'review' => 'とても良かったです。',
-    ])->assertRedirect(route('movies.index'));
-
-    expect($movie->fresh())
-        ->rating->toBe(5)
-        ->review->toBe('とても良かったです。');
-
-    $this->put(route('movies.update', $movie), ['rating' => 6])
-        ->assertSessionHasErrors('rating');
+    expect($validator->fails())->toBeTrue()
+        ->and($validator->errors()->first('rating'))->toBe('評価は1〜5で選択してください。');
 });
 
 test('映画をコレクションから削除できる', function () {

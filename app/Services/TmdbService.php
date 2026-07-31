@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
@@ -14,7 +15,7 @@ class TmdbService
 {
     private const BASE_URL = 'https://api.themoviedb.org/3';
 
-    private const VIDEO_CACHE_SECONDS = 21600;
+    private const RESOURCE_CACHE_SECONDS = 21600;
 
     public function nowPlaying(): array
     {
@@ -150,7 +151,7 @@ class TmdbService
             }
         }
 
-        Cache::put($candidateCacheKey, $candidates, $candidates === [] ? 600 : self::VIDEO_CACHE_SECONDS);
+        Cache::put($candidateCacheKey, $candidates, $candidates === [] ? 600 : self::RESOURCE_CACHE_SECONDS);
 
         return $candidates;
     }
@@ -205,19 +206,11 @@ class TmdbService
             return $ratings;
         }
 
-        try {
-            $responses = Http::pool(fn (Pool $pool): array => array_map(
-                fn (int $movieId) => $pool
-                    ->as((string) $movieId)
-                    ->withToken((string) config('services.tmdb.token'))
-                    ->acceptJson()
-                    ->timeout(10)
-                    ->get(self::BASE_URL."/movie/{$movieId}", ['language' => $language]),
-                $missingIds,
-            ));
-        } catch (ConnectionException) {
-            return $ratings;
-        }
+        $responses = $this->poolMovieRequests(
+            $missingIds,
+            fn (int $movieId): string => "/movie/{$movieId}",
+            ['language' => $language],
+        );
 
         foreach ($missingIds as $movieId) {
             $response = $responses[(string) $movieId] ?? null;
@@ -233,16 +226,11 @@ class TmdbService
             Cache::put(
                 "tmdb:movie:{$movieId}:rating:{$language}",
                 ['rating' => $rating],
-                self::VIDEO_CACHE_SECONDS,
+                self::RESOURCE_CACHE_SECONDS,
             );
         }
 
         return $ratings;
-    }
-
-    public function posterUrl(?string $path, string $size = 'w500'): ?string
-    {
-        return $path ? "https://image.tmdb.org/t/p/{$size}{$path}" : null;
     }
 
     /**
@@ -267,19 +255,11 @@ class TmdbService
             return $videos;
         }
 
-        try {
-            $responses = Http::pool(fn (Pool $pool): array => array_map(
-                fn (int $movieId) => $pool
-                    ->as((string) $movieId)
-                    ->withToken((string) config('services.tmdb.token'))
-                    ->acceptJson()
-                    ->timeout(10)
-                    ->get(self::BASE_URL."/movie/{$movieId}/videos", ['language' => $language]),
-                $missingIds,
-            ));
-        } catch (ConnectionException) {
-            return $videos;
-        }
+        $responses = $this->poolMovieRequests(
+            $missingIds,
+            fn (int $movieId): string => "/movie/{$movieId}/videos",
+            ['language' => $language],
+        );
 
         foreach ($missingIds as $movieId) {
             $response = $responses[(string) $movieId] ?? null;
@@ -290,7 +270,7 @@ class TmdbService
 
             $movieVideos = $response->json('results', []);
             $videos[$movieId] = $movieVideos;
-            Cache::put($this->videoCacheKey($movieId, $language), $movieVideos, self::VIDEO_CACHE_SECONDS);
+            Cache::put($this->videoCacheKey($movieId, $language), $movieVideos, self::RESOURCE_CACHE_SECONDS);
         }
 
         return $videos;
@@ -299,6 +279,30 @@ class TmdbService
     private function videoCacheKey(int $tmdbId, string $language): string
     {
         return "tmdb:movie:{$tmdbId}:videos:{$language}";
+    }
+
+    /**
+     * @return array<string, Response|ConnectionException>
+     */
+    private function poolMovieRequests(array $movieIds, Closure $path, array $query): array
+    {
+        if ($movieIds === []) {
+            return [];
+        }
+
+        try {
+            return Http::pool(fn (Pool $pool): array => array_map(
+                fn (int $movieId) => $pool
+                    ->as((string) $movieId)
+                    ->withToken((string) config('services.tmdb.token'))
+                    ->acceptJson()
+                    ->timeout(10)
+                    ->get(self::BASE_URL.$path($movieId), $query),
+                $movieIds,
+            ));
+        } catch (ConnectionException) {
+            return [];
+        }
     }
 
     private function client(): PendingRequest
